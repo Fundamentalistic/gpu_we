@@ -155,6 +155,14 @@ class EntropyAnalyzer:
         self.hoh_x[self.water_cursor] = float(line[30:38].replace(' ', ''))
         self.hoh_y[self.water_cursor] = float(line[38:46].replace(' ', ''))
         self.hoh_z[self.water_cursor] = float(line[46:55].replace(' ', ''))
+        self.hoh_indexes[self.water_cursor] = int(line[23:27].replace(' ', ''))
+        res = line[17, 21].replace(' ', '')
+        if res == 'H1':
+            self.hoh_atom_names[self.water_cursor] = self._H1
+        elif res == 'H2':
+            self.hoh_atom_names[self.water_cursor] = self._H2
+        elif res == 'OH2':
+            self.hoh_atom_names[self.water_cursor] = self._OH2
 
     def binary_search(self, val, target):
         target_len = int(len(target) / 2)
@@ -257,6 +265,8 @@ class EntropyAnalyzer:
             self.hoh_x = torch.zeros(self.water_length).cuda()
             self.hoh_y = torch.zeros(self.water_length).cuda()
             self.hoh_z = torch.zeros(self.water_length).cuda()
+            self.hoh_indexes = torch.zeros(self.water_length).cuda()
+            self.hoh_atom_names = torch.zeros(self.water_length).cuda()
 
             print(f"water length: {self.water_length}")
             self.water_cursor = 0
@@ -276,8 +286,8 @@ class EntropyAnalyzer:
         global naigbour_distance
         print_counter = 0
         for atom_index in range(self.protein_length):
-            d = ((self.hoh_x.pow(2) - self.x[atom_index].pow(2)) + \
-                (self.hoh_y.pow(2) - self.y[atom_index].pow(2)) + \
+            d = ((self.hoh_x.pow(2) - self.x[atom_index].pow(2)) +
+                (self.hoh_y.pow(2) - self.y[atom_index].pow(2)) +
                 (self.hoh_z.pow(2) - self.z[atom_index].pow(2))).sqrt()
             d = d[d < naigbour_distance]
             print(d.size()[0], end=' ')
@@ -386,8 +396,67 @@ class EntropyAnalyzer:
             print(f"Обнаружены ошибки в рассчетах: Размерность проверочного вектора не нулевая {check}")
             print(check_vector[check_vector > 1e-5])
 
-    def water_statistic_calculation(self): # Написать метод вычисления статистики водной ориентации
-        pass
+    def water_statistic_calculation(self):  # Написать метод вычисления статистики водной ориентации
+        global naigbour_distance
+        print_counter = 0
+        for atom_index in range(self.protein_length):
+            # Вычисляем расстояние до каждой молекулы воды
+            d = ((self.hoh_x.pow(2) - self.x[atom_index].pow(2)) +
+                 (self.hoh_y.pow(2) - self.y[atom_index].pow(2)) +
+                 (self.hoh_z.pow(2) - self.z[atom_index].pow(2))).sqrt()
+
+            # Выбиракем только те молекулы, которые находятся не дальше отсечки
+            d = d[d < naigbour_distance]
+
+            # Получаем молекулярные индексы каждого атома, попавшего в сферу
+            indexes = self.hoh_indexes[d < naigbour_distance]
+            indexes = indexes.unique()
+
+            # По полученным индексам получаем целиком молекулы воды
+            w_x = torch.zeros([])
+            w_y = torch.zeros([])
+            w_z = torch.zeros([])
+            w_n = torch.zeros([])
+            for i in indexes:
+                w_x = torch.cat((w_x, self.hoh_x[self.hoh_indexes == i]))
+                w_y = torch.cat((w_y, self.hoh_y[self.hoh_indexes == i]))
+                w_z = torch.cat((w_z, self.hoh_z[self.hoh_indexes == i]))
+                w_n = torch.cat((w_z, self.hoh_atom_names[self.hoh_indexes == i]))
+
+            # Разделяем полученные массивы по именам атомов для начала вычисления ориентации
+            h1_x = w_x[w_n == self._H1]
+            h1_y = w_y[w_n == self._H1]
+            h1_z = w_z[w_n == self._H1]
+
+            h2_x = w_x[w_n == self._H2]
+            h2_y = w_y[w_n == self._H2]
+            h2_z = w_z[w_n == self._H2]
+
+            oh2_x = w_x[w_n == self._OH2]
+            oh2_y = w_y[w_n == self._OH2]
+            oh2_z = w_z[w_n == self._OH2]
+
+            # Начинаем вычисление водной ориентации
+            # Выполняем сдвиг начала координат в атом кислорода для каждого водорода
+            h1_x = h1_x - oh2_x
+            h1_y = h1_y - oh2_y
+            h1_z = h1_z - oh2_z
+
+            h2_x = h2_x - oh2_x
+            h2_y = h2_y - oh2_y
+            h2_z = h2_z - oh2_z
+
+            # Вычисляем расстояние для каждого водорода
+            r1 = torch.sqrt(h1_x.pow(2) + h1_y.pow(2) + h1_z.pow(2))
+            r2 = torch.sqrt(h2_x.pow(2) + h2_y.pow(2) + h2_z.pow(2))
+
+            # Вычисляем зенит для каждого водорода
+            teta1 = torch.arccos(h1_z / r1)
+            teta2 = torch.arccos(h2_z / r2)
+
+            # Вычисляем азимут для каждого водорода
+            phi1 = torch.arctan(h1_y / h1_x)
+            phi2 = torch.arctan(h2_y / h2_x)
 
 e = EntropyAnalyzer()
 # e.fill_first_line_molecules("C:\\Users\\softc\\Desktop\\Data\\Models\\3rjp\\frames\\frames.pdb")
