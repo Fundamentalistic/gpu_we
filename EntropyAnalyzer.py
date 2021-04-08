@@ -1,6 +1,6 @@
 import torch
 import math as m
-import os
+import os, io, time
 
 naigbour_distance = 0.3
 
@@ -31,6 +31,8 @@ class EntropyAnalyzer:
 
     deltaB = 3.5
     hydrogen_bond_len = 4
+
+    logs = []
 
     def __init__(self):
         self.log_path = "C:\\logs\\"
@@ -100,7 +102,6 @@ class EntropyAnalyzer:
 
     def is_end_of_frame(self, line):
         if line.find("END") != -1:
-            print(line)
             return True
         return False
 
@@ -143,6 +144,7 @@ class EntropyAnalyzer:
         self.y[self.protein_cursor] = float(line[38:46].replace(' ', ''))
         self.z[self.protein_cursor] = float(line[46:55].replace(' ', ''))
         self.protein_amino_acid_id[self.protein_cursor] = int(line[23:27].replace(' ', ''))
+        self.protein_atom_indexes[self.protein_cursor] = self.protein_cursor
         name = line[13:17].replace(' ', '')
         if name == 'CA':
             self.protein_atom_type[self.protein_cursor] = self._CA
@@ -159,15 +161,14 @@ class EntropyAnalyzer:
 
 
     def update_water_coordinate_indexes(self, line):
-        if self.water_cursor == 623938:
-            print(line)
         if not 'ATOM' in line:
             return
         self.hoh_x[self.water_cursor] = float(line[30:38].replace(' ', ''))
         self.hoh_y[self.water_cursor] = float(line[38:46].replace(' ', ''))
         self.hoh_z[self.water_cursor] = float(line[46:55].replace(' ', ''))
-        self.hoh_indexes[self.water_cursor] = int(line[23:27].replace(' ', ''))
-        res = line[17:21].replace(' ', '')
+        self.hoh_indexes[self.water_cursor] = int(line[22:27].replace(' ', ''))
+        self.hoh_atom_indexes[self.water_cursor] = self.water_cursor
+        res = line[13:17].replace(' ', '')
         if res == 'H1':
             self.hoh_atom_names[self.water_cursor] = self._H1
         elif res == 'H2':
@@ -249,10 +250,11 @@ class EntropyAnalyzer:
 
             self.protein_atom_type = torch.zeros(self.protein_points_count).cuda()
             self.protein_amino_acid_id = torch.zeros(self.protein_points_count).cuda()
+            self.protein_atom_indexes = torch.zeros(self.protein_points_count).cuda()
 
             self.protein_length = self.protein_points_count
 
-            print(f"protein length: {self.protein_length}")
+            print(f"protein length: {self.protein_length}. Временная отметка {timestamps()}")
 
             for line in frames_file:
                 if self.is_water(line):
@@ -261,7 +263,6 @@ class EntropyAnalyzer:
                     self.update_protein_coordinate_indexes(line)
                     self.protein_cursor += 1
 
-            print(self.x, self.y, self.z)
             frames_file.seek(0)
             for line in frames_file:
                 if self.is_water(line):
@@ -278,19 +279,26 @@ class EntropyAnalyzer:
             self.hoh_z = torch.zeros(self.water_length).cuda()
             self.hoh_indexes = torch.zeros(self.water_length).cuda()
             self.hoh_atom_names = torch.zeros(self.water_length).cuda()
+            self.hoh_atom_indexes = torch.zeros(self.water_length).cuda()
 
-            print(f"water length: {self.water_length}")
+            print(f"water length: {self.water_length}. Временная отметка {timestamps()}")
             self.water_cursor = 0
             self.water_initiated = False
+            self.cadr_counter = 1
             for line in frames_file:
                 if self.is_water(line):
                     self.update_water_coordinate_indexes(line)
                     self.water_cursor += 1
                     self.water_initiated = True
                 elif self.is_end_of_frame(line) and self.water_initiated:
-                    select_condition = self.check_neighbour()
+                    print(f"Чтение кадра моделирования завершено. Временная отметка {timestamps()}")
+                    # select_condition = self.check_neighbour()
+                    # print("Проверка числа ближайших соседей завершена")
                     self.main_calculations()
+                    print(f"Вычисление поворотных матриц выполнено. Временная отметка {timestamps()}")
                     self.water_statistic_calculation()
+                    print(f"Вычисление статистики водной ориентации для кадра {self.cadr_counter} выполнено. Временная отметка {timestamps()}")
+                    self.cadr_counter += 1
                     self.water_cursor = 0
 
     def check_neighbour(self):
@@ -403,7 +411,7 @@ class EntropyAnalyzer:
             print(f"Обнаружены ошибки в рассчетах: Размерность проверочного вектора не нулевая {check}")
             print(check_vector[check_vector > 1e-5])
 
-    def water_statistic_calculation(self):  # Написать метод вычисления статистики водной ориентации
+    def water_statistic_calculation(self):
         global naigbour_distance
         print_counter = 0
         print_string = ""
@@ -414,19 +422,55 @@ class EntropyAnalyzer:
                  (self.hoh_z.pow(2) - self.z[atom_index].pow(2))).sqrt()
 
             # Получаем молекулярные индексы каждого атома, попавшего в сферу
-            indexes = self.hoh_indexes[d < naigbour_distance]
-            indexes = indexes.unique()
+            c1_matrix = d < naigbour_distance
+            molecular_indexes = self.hoh_indexes[c1_matrix]
+            atom_indexes = self.hoh_atom_indexes[c1_matrix]
+            already_used_indexes = []
+            indexes_size = c1_matrix[c1_matrix == True].size()[0]
+            if indexes_size == 0:
+                continue
+            index_of_indexes = 0
+
+            # print(f"Для атома с индексом {atom_index} найдено {indexes_size} молекул воды")
 
             # По полученным индексам получаем целиком молекулы воды
             w_x = torch.tensor([]).cuda()
             w_y = torch.tensor([]).cuda()
             w_z = torch.tensor([]).cuda()
             w_n = torch.tensor([]).cuda()
-            for i in indexes:
-                w_x = torch.cat((w_x, self.hoh_x[self.hoh_indexes == i]))
-                w_y = torch.cat((w_y, self.hoh_y[self.hoh_indexes == i]))
-                w_z = torch.cat((w_z, self.hoh_z[self.hoh_indexes == i]))
-                w_n = torch.cat((w_n, self.hoh_atom_names[self.hoh_indexes == i]))
+            while index_of_indexes < indexes_size:
+                if index_of_indexes in already_used_indexes:
+                    continue
+
+                atom_index1 = atom_indexes[index_of_indexes].item()
+                molecular_index = molecular_indexes[index_of_indexes].item()
+
+                intermediate_atom_names = self.hoh_atom_names[self.hoh_indexes == molecular_index]
+                intermediate_res_indexes = self.hoh_indexes[self.hoh_indexes == molecular_index]
+                intermediate_atom_indexes = self.hoh_atom_indexes[self.hoh_indexes == molecular_index]
+                intermediate_wx = self.hoh_x[self.hoh_indexes == molecular_index]
+                intermediate_wy = self.hoh_y[self.hoh_indexes == molecular_index]
+                intermediate_wz = self.hoh_z[self.hoh_indexes == molecular_index]
+                intermediate_wn = self.hoh_atom_names[self.hoh_indexes == molecular_index]
+
+                c2 = intermediate_atom_indexes >= atom_index1 - 2
+                c3 = intermediate_atom_indexes <= atom_index1 + 2
+                c4 = c2 == c3
+
+                target_wx = intermediate_wx[c4]
+                target_wy = intermediate_wy[c4]
+                target_wz = intermediate_wz[c4]
+                target_wn = intermediate_wn[c4]
+
+                w_x = torch.cat((w_x, target_wx))
+                w_y = torch.cat((w_y, target_wy))
+                w_z = torch.cat((w_z, target_wz))
+                w_n = torch.cat((w_n, target_wn))
+                already_used_indexes.append(index_of_indexes)
+                index_of_indexes += 1
+            # print(f"Длина индексов: {w_x.size()[0]}")
+
+            # Получаем все молекулы воды с заданным индексом
 
             # Разделяем полученные массивы по именам атомов для начала вычисления ориентации
             h1_x = w_x[w_n == self._H1]
@@ -464,25 +508,36 @@ class EntropyAnalyzer:
             phi2 = torch.arctan(h2_y / h2_x)
 
             # Пишем лог вычисления
-            self.print_log(teta1, phi1, teta2, phi2)
+            self.print_log(teta1, phi1, teta2, phi2, atom_index)
 
-    def print_log(self, teta1, phi1, teta2, phi2):
+    def print_log(self, teta1, phi1, teta2, phi2, atom_index):
         i = 0
         if not teta1.size()[0] == phi1.size()[0] == teta2.size()[0] == phi2.size()[0]:
             print("Wrong dimensions: log can`t be created. Calculation error was occured")
             quit()
 
+        # print(f"teta size: {teta1.size()[0]}")
+
         while i < teta1.size()[0]:
             log_line = f"{teta1[i]}\t{phi1[i]}\n{teta2[i]}\t{phi2[i]}\n"
-            log_file = self.log_path + f"atom_{i}_log.txt"
+            log_file = self.log_path + f"atom_{atom_index}_log.txt"
             with open(log_file, 'a+') as f:
                 f.write(log_line)
                 f.close()
             i += 1
 
+def timestamps():
+    global current_time
+    if not 'current_time' in globals():
+        current_time = time.time()
+    delta = time.time() - current_time
+    current_time = time.time()
+    return delta
 
+timestamps()
 
 e = EntropyAnalyzer()
 # e.fill_first_line_molecules("C:\\Users\\softc\\Desktop\\Data\\Models\\3rjp\\frames\\frames.pdb")
-e.cuda_fill_protein("D:\\Data\\Models\\3rjp\\frames\\frames.pdb")
+# e.cuda_fill_protein("D:\\Data\\Models\\3rjp\\frames\\frames.pdb")
+e.cuda_fill_protein("C:\\frames\\frames.pdb")
 print("Complete")
