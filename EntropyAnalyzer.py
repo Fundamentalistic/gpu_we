@@ -1,8 +1,10 @@
 import torch
 import math as m
-import os, io, time
+import os
+import time
+import pymysql
 
-naigbour_distance = 0.3
+naigbour_distance = 0.4
 
 class EntropyAnalyzer:
 
@@ -159,7 +161,6 @@ class EntropyAnalyzer:
         else:
             self.protein_atom_type[self.protein_cursor] = self._OTHER
 
-
     def update_water_coordinate_indexes(self, line):
         if not 'ATOM' in line:
             return
@@ -227,7 +228,6 @@ class EntropyAnalyzer:
         z = az
         return x, y, z
 
-
     def cuda_fill_protein(self, pdb_frames_path):
 
         self.protein_points_count = 0
@@ -272,7 +272,7 @@ class EntropyAnalyzer:
 
             frames_file.seek(0)
 
-            self.water_length = self.water_points_count
+            self.water_length = self.water_points_count + 2
 
             self.hoh_x = torch.zeros(self.water_length).cuda()
             self.hoh_y = torch.zeros(self.water_length).cuda()
@@ -413,8 +413,6 @@ class EntropyAnalyzer:
 
     def water_statistic_calculation(self):
         global naigbour_distance
-        print_counter = 0
-        print_string = ""
         for atom_index in range(self.protein_length):
             # Вычисляем расстояние до каждой молекулы воды
             d = ((self.hoh_x.pow(2) - self.x[atom_index].pow(2)) +
@@ -516,7 +514,7 @@ class EntropyAnalyzer:
             print("Wrong dimensions: log can`t be created. Calculation error was occured")
             quit()
 
-        # print(f"teta size: {teta1.size()[0]}")
+        # print(f"atom_index: {atom_index} teta size: {teta1.size()[0]}")
 
         while i < teta1.size()[0]:
             log_line = f"{teta1[i]}\t{phi1[i]}\n{teta2[i]}\t{phi2[i]}\n"
@@ -525,6 +523,88 @@ class EntropyAnalyzer:
                 f.write(log_line)
                 f.close()
             i += 1
+
+    def cuda_fill_protein_from_sql(self, host="localhost", user="", passwd="", db="", pdb_frames_path=""):
+
+        self.protein_points_count = 0
+        self.water_points_count = 0
+
+        self.protein_cursor = 0
+        self.water_cursor = 0
+
+        try:
+            database_context = pymysql.connect(host=host, user=user, password=passwd, database=db)
+        except Exception as e:
+            print(f"Database error: {e}")
+            quit()
+
+        with open(pdb_frames_path, 'r') as frames_file:
+            for line in frames_file:
+                if self.is_water(line):
+                    break
+                else:
+                    self.protein_points_count += 1
+
+            # frames_file.seek(0)
+            self.x = torch.zeros(self.protein_points_count).cuda()
+            self.y = torch.zeros(self.protein_points_count).cuda()
+            self.z = torch.zeros(self.protein_points_count).cuda()
+
+            self.protein_atom_type = torch.zeros(self.protein_points_count).cuda()
+            self.protein_amino_acid_id = torch.zeros(self.protein_points_count).cuda()
+            self.protein_atom_indexes = torch.zeros(self.protein_points_count).cuda()
+
+            self.protein_length = self.protein_points_count
+
+            print(f"protein length: {self.protein_length}. Временная отметка {timestamps()}")
+
+            for line in frames_file:
+                if self.is_water(line):
+                    break
+                else:
+                    self.update_protein_coordinate_indexes(line)
+                    self.protein_cursor += 1
+
+            cursor = database_context.cursor()
+            res_length = 1
+            cursor_position = 0
+            while res_length > 0:
+
+                query = f"SELECT * FROM water LIMIT {cursor_position*10**6}, {10**6}"
+                print(f"Execute query: {query}")
+                cursor_position += 1
+
+                res_length = cursor.execute(query)
+                rows = cursor.fetchall()
+
+                self.water_length = res_length
+
+                self.hoh_x = torch.zeros(res_length).cuda()
+                self.hoh_y = torch.zeros(res_length).cuda()
+                self.hoh_z = torch.zeros(res_length).cuda()
+                self.hoh_indexes = torch.zeros(res_length).cuda()
+                self.hoh_atom_names = torch.zeros(res_length).cuda()
+                self.hoh_atom_indexes = torch.zeros(res_length).cuda()
+
+                print(f"Выделение памяти для матриц на GPU выполнено: {res_length}. Временная отметка {timestamps()}")
+
+                for i, row in enumerate(rows):
+                    self.hoh_indexes[i] = row[1]
+                    self.hoh_atom_names[i] = row[2]
+                    self.hoh_atom_indexes[i] = row[0]
+                    self.hoh_x[i] = row[4]
+                    self.hoh_y[i] = row[5]
+                    self.hoh_z[i] = row[6]
+
+                print(f"Заполнение матриц данными выполнено: {res_length}. Временная отметка {timestamps()}. Старт вычисления статистики водной ориентации")
+
+                # select_condition = self.check_neighbour()
+                # print("Проверка числа ближайших соседей завершена")
+                self.main_calculations()
+                print(f"Вычисление поворотных матриц выполнено. Временная отметка {timestamps()}")
+                self.water_statistic_calculation()
+                print(f"Вычисление статистики водной ориентации для кадра {cursor_position} выполнено. Временная отметка {timestamps()}")
+
 
 def timestamps():
     global current_time
@@ -540,4 +620,12 @@ e = EntropyAnalyzer()
 # e.fill_first_line_molecules("C:\\Users\\softc\\Desktop\\Data\\Models\\3rjp\\frames\\frames.pdb")
 # e.cuda_fill_protein("D:\\Data\\Models\\3rjp\\frames\\frames.pdb")
 e.cuda_fill_protein("C:\\frames\\frames.pdb")
-print("Complete")
+# e.cuda_fill_protein_from_sql(
+#     user="models",
+#     passwd="zxcasdqwe123",
+#     pdb_frames_path="C:\\frames\\frames.pdb",
+#     db="modelling53")
+# print("Complete")
+
+# Слишком медленная скорость преобразования файла PDB в тензор cuda
+# Одно из возможных решений - сделать конвертер pdb - тензор cuda для каждого фрейма и сохранить их на диске.
