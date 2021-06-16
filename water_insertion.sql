@@ -1,0 +1,1 @@
+INSERT INTO `water` (`res_name_id`,`res_id`,`atom_name_id`,`atom_id`,`x`,`y`,`z` ) VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6});

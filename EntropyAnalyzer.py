@@ -37,7 +37,7 @@ class EntropyAnalyzer:
     logs = []
 
     def __init__(self):
-        self.log_path = "C:\\logs\\"
+        self.log_path = "C:\\logs\\2rtz\\"
         self.folder_delimiter = '\\'
         if self.log_path[-1] != self.folder_delimiter:
             self.log_path += self.folder_delimiter
@@ -619,7 +619,7 @@ timestamps()
 e = EntropyAnalyzer()
 # e.fill_first_line_molecules("C:\\Users\\softc\\Desktop\\Data\\Models\\3rjp\\frames\\frames.pdb")
 # e.cuda_fill_protein("D:\\Data\\Models\\3rjp\\frames\\frames.pdb")
-e.cuda_fill_protein("C:\\frames\\frames.pdb")
+e.cuda_fill_protein("C:\\Science\\2rtz\\frames\\frames.pdb")
 # e.cuda_fill_protein_from_sql(
 #     user="models",
 #     passwd="zxcasdqwe123",
