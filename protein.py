@@ -5,15 +5,44 @@ Supported by Bespalov Andrei
 """
 
 import torch
-import torch.nn as nn
-from PIL import Image
+import matplotlib.pyplot as plt
 import math
 import numpy as np
 
 def sigmoid(x):
     return 1 / (1 + math.exp(-x))
 
+HYDROPHOBIC = 0
+CHARGED = 1
+POLAR = 2
+SPECIAL = 3
+PROLINE = 4
+
 class Resolve_Dicts:
+    types = {
+            'R': CHARGED,
+            'H': CHARGED,
+            'K': CHARGED,
+            'D': CHARGED,
+            'E': CHARGED,
+            'S': POLAR,
+            'T': POLAR,
+            'N': POLAR,
+            'Q': POLAR,
+            'C': SPECIAL,
+            'U': SPECIAL,          
+            'G': SPECIAL,
+            'A': HYDROPHOBIC,
+            'I': HYDROPHOBIC,             
+            'L': HYDROPHOBIC,
+            'M': HYDROPHOBIC,
+            'F': HYDROPHOBIC,           
+            'W': HYDROPHOBIC,
+            'Y': HYDROPHOBIC,
+            'V': HYDROPHOBIC,
+            'P': PROLINE
+            }
+    
     simple_numbers = {
         'A': 3,
         'R': 5,
@@ -120,6 +149,20 @@ class Resolve_Dicts:
     atype = None
     numerical = None
 
+
+bcolors = {
+    CHARGED:'\033[95m',
+    POLAR: '\033[94m',
+    PROLINE: '\033[96m',
+    HYDROPHOBIC: '\033[92m',
+    SPECIAL: '\033[93m',
+    'FAIL': '\033[91m',
+    'ENDC': '\033[0m',
+    'BOLD': '\033[1m',
+    'UNDERLINE': '\033[4m',
+}
+
+
 class Residue:
     atoms = None
 
@@ -136,7 +179,7 @@ class Protein:
     distanceTensor = None
 
     # Параметры преобразования данных
-    cutoff = 5  # дистанция отсечки
+    cutoff = 20  # дистанция отсечки
 
     # Константы описания
     _on_ = 107
@@ -246,7 +289,8 @@ class Protein:
             second_line_sentence = ""
             for i2, ca2 in enumerate(self.CA_trace):
                 d = math.sqrt(
-                    ((ca2['x'] - ca1['x']) ** 2) + ((ca2['y'] - ca1['y']) ** 2) + ((ca2['z'] - ca1['z']) ** 2))
+                    ((ca2['x'] - ca1['x']) ** 2) + ((ca2['y'] - ca1['y']) ** 2) + ((ca2['z'] - ca1['z']) ** 2)
+                )
                 if d <= self.cutoff and abs(i1 - i2) > 4:
                     second_line_sentence += f"to {i2} is {ca2['res_name']} on {round(d)} "
             self.complete_sentence += first_line_sentence + second_line_sentence + "drop \n "
@@ -356,9 +400,23 @@ class Protein:
             t1[i] = t2
         return t1
 
+    def print_regions(self):
+        print(bcolors[HYDROPHOBIC] + "HYDROPHOBIC" + bcolors['ENDC'])
+        print(bcolors[POLAR] + "POLAR" + bcolors['ENDC'])
+        print(bcolors[SPECIAL] + "SPECIAL" + bcolors['ENDC'])
+        print(bcolors[CHARGED] + "CHARGED" + bcolors['ENDC'])
+        print(bcolors[PROLINE] + "PROLINE" + bcolors['ENDC'])
+        for i, res in enumerate(self.CA_trace):
+            res_type = Resolve_Dicts.types[res['res_name']]
+            print(bcolors[res_type] + str(i) + ":" + res['res_name'] + bcolors['ENDC'], end='    ')
+            if (i + 1) % 10 == 0:
+                print('')
 
-p = Protein(pdb_link="./training-set/1A73.pdb")
-print(p.getCATraceTensor())
-a = p.generateCompleteProteinTensorFormLanguage()
-print(a)
-# print(p.restoreSequenceFromTensor(a))
+    def show_distance_matrix(self):
+        dm = self.generateCompleteDistanceMatrix()
+        dm.view(dm.shape, torch.zeros((96, 96)), torch.zeros((96, 96)))
+        plt.imshow(dm)
+        plt.show()
+
+p = Protein(pdb_link="./3rjp.pdb")
+p.show_distance_matrix()
