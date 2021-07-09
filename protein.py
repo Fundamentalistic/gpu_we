@@ -150,6 +150,8 @@ class Resolve_Dicts:
     numerical = None
 
 
+
+
 bcolors = {
     CHARGED:'\033[95m',
     POLAR: '\033[94m',
@@ -188,6 +190,9 @@ class Protein:
     _drop_ = 127
     _breakline_ = 131
     _next_number_ = 137
+
+    target_position = -1
+    input_tensor = None
 
     def __init__(self, pdb_link=None, pdb_content=None):
         if pdb_link is not None:
@@ -418,5 +423,52 @@ class Protein:
         plt.imshow(dm)
         plt.show()
 
+    def generate_output_sentences(self):
+        distance_matrix = self.generateCompleteDistanceMatrix()
+        simple_number_sequence = [Resolve_Dicts.main_dict[x] for x in self.AASequence]
+        for i, line in enumerate(distance_matrix):
+            sentence = torch.cat((torch.Tensor([simple_number_sequence[i]]), line))
+            print(sentence.shape)
+
+    # Method for generation amino acid sequence as tensor
+    def get_aa_sequence_tensor(self):
+        self.input_tensor = torch.zeros((len(self.AASequence)))
+        for index, amino_acid in enumerate(self.AASequence):
+            self.input_tensor[index] = Resolve_Dicts.simple_numbers[amino_acid]
+        return self.input_tensor
+
+    # Method for target amino acid sequence
+    def set_target(self, pos):
+        if pos > len(self.AASequence):
+            raise IOError("Wrong position number")
+        else:
+            self.target_position = pos
+
+    # Method for generation input sequence tensor
+    def generate_input_tensor(self):
+        if self.input_tensor is None:
+            raise IOError('Input tensor is None')
+        return torch.cat((torch.tensor([self.target_position]), self.input_tensor))
+
+    # method for generation output sequence tensor
+    def generate_output_data(self):
+        distance_matrix = self.generateCompleteDistanceMatrix()
+        distance_matrix_for_target = distance_matrix[self.target_position]
+        distance_matrix_for_target = torch.round(distance_matrix_for_target)
+        output_sentence = []
+        for index, associated in enumerate(distance_matrix_for_target):
+            if associated != 0:
+                output_sentence.append(index+1)
+                output_sentence.append(associated)
+                output_sentence.append(0)
+        return torch.tensor(output_sentence)
+
+
+
+
 p = Protein(pdb_link="./3rjp.pdb")
-p.show_distance_matrix()
+# p.generate_output_sentences()
+p.get_aa_sequence_tensor()
+p.set_target(1)
+# print(p.generate_input_tensor())
+print(p.generate_output_data())

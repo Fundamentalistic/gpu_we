@@ -5,14 +5,22 @@ import os
 import torch
 import time
 from protein import Protein
+
 """
-Класс базы данных PDB
-1) Предоставляет интерфейс взаимодействия с удаленным хранилищем белковых структур
-2) Предоставляет интерфейс подготовки сырых данных
+PDB class
+It is provide method of interaction with remote PDB database
+It is provide preparation of raw data methods
+
 """
+
+# Delimiter definition for windows or posix paths
 path_delimiter = '/'
-ptStoragePath = "./easy_ptstorage"
-pdb_data_path = "./PDB_DATABASE/pdb/"
+if os.name == 'nt':
+    path_delimited = '\\'
+
+ptStoragePath = "." + path_delimiter + "easy_ptstorage"     # Targets saving path
+pdb_data_path = "." + path_delimiter + "PDB_DATABASE/pdb/"  # Local PDB mirror path
+
 
 class PDB:
 
@@ -45,10 +53,10 @@ class PDB:
             os.makedirs(ptStoragePath)
         if ptStoragePath[:-1] != path_delimiter:
             ptStoragePath += path_delimiter
-        if not os.path.exists(ptStoragePath+"pt"):
-            os.makedirs(ptStoragePath+"pt")
-        if not os.path.exists(ptStoragePath+"des"):
-            os.makedirs(ptStoragePath+"des")
+        if not os.path.exists(ptStoragePath + "pt"):
+            os.makedirs(ptStoragePath + "pt")
+        if not os.path.exists(ptStoragePath + "des"):
+            os.makedirs(ptStoragePath + "des")
         fileList = os.listdir(self.path)
         for fileName in fileList:
             p = Protein(pdb_link=self.path + fileName)
@@ -56,7 +64,7 @@ class PDB:
                 different = p.getCATraceLen() - one_dimension_input_size
                 for i in range(different):
                     input_tensor = p.generateInputData(one_dimension_input_size, i)
-                    ptfname = ptStoragePath+"pt"+path_delimiter+fileName+".{}.pt".format(i)
+                    ptfname = ptStoragePath + "pt" + path_delimiter + fileName + ".{}.pt".format(i)
                     desfname = ptStoragePath + "des" + path_delimiter + fileName + ".{}.pt.des".format(i)
                     torch.save(input_tensor, ptfname)
                     desired = p.generateDistanceMatrix(one_dimension_input_size, i)
@@ -64,8 +72,8 @@ class PDB:
                     print(f"Save: {ptfname}")
             elif one_dimension_input_size == p.getCATraceLen():
                 input_tensor = p.generateInputData(one_dimension_input_size, 0)
-                ptfname = ptStoragePath+"pt"+ path_delimiter + fileName + ".pt"
-                desfname = ptStoragePath + "des"+ path_delimiter + fileName + ".pt.des"
+                ptfname = ptStoragePath + "pt" + path_delimiter + fileName + ".pt"
+                desfname = ptStoragePath + "des" + path_delimiter + fileName + ".pt.des"
                 torch.save(input_tensor, ptfname)
                 desired = p.generateDistanceMatrix(one_dimension_input_size, 0)
                 torch.save(desired, desfname)
@@ -80,16 +88,16 @@ class PDB:
             os.makedirs(ptStoragePath)
         if ptStoragePath[:-1] != path_delimiter:
             ptStoragePath += path_delimiter
-        if not os.path.exists(ptStoragePath+"pt"):
-            os.makedirs(ptStoragePath+"pt")
-        if not os.path.exists(ptStoragePath+"des"):
-            os.makedirs(ptStoragePath+"des")
+        if not os.path.exists(ptStoragePath + "pt"):
+            os.makedirs(ptStoragePath + "pt")
+        if not os.path.exists(ptStoragePath + "des"):
+            os.makedirs(ptStoragePath + "des")
         fileList = os.listdir(self.path)
         for fileName in fileList:
             p = Protein(pdb_link=self.path + fileName)
             for i in range(p.getCATraceLen()):
                 input_tensor = p.generateCompleteProteinTensorFormLanguage()
-                ptfname = ptStoragePath+"pt"+path_delimiter+fileName+".{}.pt".format(i)
+                ptfname = ptStoragePath + "pt" + path_delimiter + fileName + ".{}.pt".format(i)
                 desfname = ptStoragePath + "des" + path_delimiter + fileName + ".{}.pt.des".format(i)
                 torch.save(input_tensor, ptfname)
                 desired = p.generateDistanceMatrix(one_dimension_input_size, i)
@@ -118,11 +126,11 @@ class PDB:
                 save_path += path_delimiter
             pdb_id = pdb_id.replace('\n', '')
             pdb_id = pdb_id[0:4]
-            complete = float(i*100)/all_count
-            tmp_link = pdb_file_link+pdb_id+".pdb"
+            complete = float(i * 100) / all_count
+            tmp_link = pdb_file_link + pdb_id + ".pdb"
             print(f"Load: {pdb_id} complete: {complete} link: {tmp_link}")
             pdb_content = requests.get(tmp_link)
-            pdb_file = open(save_path+pdb_id+".pdb", 'wb+')
+            pdb_file = open(save_path + pdb_id + ".pdb", 'wb+')
             pdb_file.write(pdb_content.content)
             pdb_file.close()
 
@@ -132,10 +140,10 @@ class PDB:
             os.makedirs(ptStoragePath)
         if ptStoragePath[:-1] != path_delimiter:
             ptStoragePath += path_delimiter
-        if not os.path.exists(ptStoragePath+"pt"):
-            os.makedirs(ptStoragePath+"pt")
-        if not os.path.exists(ptStoragePath+"des"):
-            os.makedirs(ptStoragePath+"des")
+        if not os.path.exists(ptStoragePath + "pt"):
+            os.makedirs(ptStoragePath + "pt")
+        if not os.path.exists(ptStoragePath + "des"):
+            os.makedirs(ptStoragePath + "des")
         fileList = os.listdir(self.path)
         for fileName in fileList:
             p = Protein(pdb_link=self.path + fileName)
@@ -143,7 +151,7 @@ class PDB:
                 different = p.getCATraceLen() - one_dimension_input_size
                 for i in range(different):
                     input_tensor = p.generateInputData(one_dimension_input_size, i)
-                    ptfname = ptStoragePath+"pt"+path_delimiter+fileName+".{}.pt".format(i)
+                    ptfname = ptStoragePath + "pt" + path_delimiter + fileName + ".{}.pt".format(i)
                     desfname = ptStoragePath + "des" + path_delimiter + fileName + ".{}.pt.des".format(i)
                     torch.save(input_tensor, ptfname)
                     desired = p.generateDistanceMatrix(one_dimension_input_size, i)
@@ -151,8 +159,8 @@ class PDB:
                     print(f"Save: {ptfname}")
             elif one_dimension_input_size == p.getCATraceLen():
                 input_tensor = p.generateInputData(one_dimension_input_size, 0)
-                ptfname = ptStoragePath+"pt"+ path_delimiter + fileName + ".pt"
-                desfname = ptStoragePath + "des"+ path_delimiter + fileName + ".pt.des"
+                ptfname = ptStoragePath + "pt" + path_delimiter + fileName + ".pt"
+                desfname = ptStoragePath + "des" + path_delimiter + fileName + ".pt.des"
                 torch.save(input_tensor, ptfname)
                 desired = p.generateDistanceMatrix(one_dimension_input_size, 0)
                 torch.save(desired, desfname)
@@ -190,20 +198,19 @@ class PDB:
             os.makedirs(ptStoragePath)
         if ptStoragePath[:-1] != path_delimiter:
             ptStoragePath += path_delimiter
-        if not os.path.exists(ptStoragePath+"pt"):
-            os.makedirs(ptStoragePath+"pt")
-        if not os.path.exists(ptStoragePath+"des"):
-            os.makedirs(ptStoragePath+"des")
+        if not os.path.exists(ptStoragePath + "pt"):
+            os.makedirs(ptStoragePath + "pt")
+        if not os.path.exists(ptStoragePath + "des"):
+            os.makedirs(ptStoragePath + "des")
         fileList = os.listdir(self.path)
         for fileName in fileList:
-            while threading.active_count() >= cpu_count()*2:
+            while threading.active_count() >= cpu_count() * 2:
                 time.sleep(1)
-            t = threading.Thread(target=self.fileIteration, args=(fileName,one_dimension_input_size, ))
+            t = threading.Thread(target=self.fileIteration, args=(fileName, one_dimension_input_size,))
             t.start()
         while threading.active_count() > 1:
             time.sleep(1)
             print(f"Active threads{threading.active_count()}", end='\r')
-
 
 
 pdb = PDB()
@@ -211,4 +218,3 @@ pdb.download_from_file_list('./targets.txt', './targets')
 # pdb = PDB(init_method="local_storage", local_path=".\\easy_target")
 # pdb.prepare_2d_data()
 # pdb.printAllCATraceLen()
-
